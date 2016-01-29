@@ -6,7 +6,7 @@
 
 #CODEPROP_SOURCES = codeprop-otf.c ram-segments.c
 
-APPS += er-coap rest-engine
+APPS += er-coap rest-engine #cantcoap
 APPS_INCLUDE_PATH = $(CONTIKI)/apps/
 ifdef APPS
   APPDS = ${wildcard ${foreach DIR, $(APPDIRS), ${addprefix $(DIR)/, $(APPS)}}} \
@@ -63,8 +63,11 @@ ifeq ($(USE_LORA_1272_RADIO),1)
   CONTIKI_TARGET_DIRS += apps/sx1272
 endif
 
-APPS_FILE +=   arduino_spi.c arduino_cmd.c status_led.c debug_on_arduino.c frame_manager.c
-CONTIKI_TARGET_DIRS += apps/arduino_interface apps/status_led apps/frame_manager
+APPS_FILE +=  eap-peer.c eap-psk.c eax.c aes.c
+#CONTIKI_TARGET_DIRS += apps/eap-sm
+
+APPS_FILE +=  arduino_spi.c arduino_cmd.c status_led.c debug_on_arduino.c frame_manager.c eap_responder.c
+CONTIKI_TARGET_DIRS += apps/arduino_interface apps/status_led apps/frame_manager apps/eap_responder
 
 
   ifndef CONTIKI_TARGET_MAIN
