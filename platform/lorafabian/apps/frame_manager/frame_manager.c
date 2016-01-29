@@ -46,9 +46,12 @@ channel configured in sx1272_contiki_radio.c
 #include "frame802154_lora.h"
 #include "cfs/cfs.h"
 #include <string.h>
+#include "eap_responder.h"
+#include "test1.c"
 
 static struct etimer rx_timer;
 static struct etimer timer_payload_beacon;
+process_event_t event_data_ready;
 
 //The response to the beacon
 char coap_payload_beacon[150];
@@ -95,6 +98,7 @@ void updateHOSTNAME()
   }
   printf("HOSTNAME : %s\n\r", coap_payload_beacon);
 }
+
 
 /**
  * \brief: Send the coap_payload_beacon to layer802154
@@ -159,8 +163,14 @@ int respond_if_coap_beacon(u8 rx_msg[], int size) {
     if(check_coap_beacon){
       printf("\n\r\tThis is the LoRA CoAP Beacon\n\r");
       return 1;
-    } else
-        printf("Not LoRa Beacon. Other CoAP Message.\n\r");
+    } else if((coap_message->code == COAP_PUT)
+                            && (coap_message->payload_len != 0)) {
+        printf("EAP CoAP Message of len=%d.\n\r",coap_message->payload_len);
+	// post an event to EAP responder and pass the coap pckt
+	process_post_synch(&eap_responder_process, event_data_ready,coap_message);
+    } else {
+	printf("Other CoAP Message\n\r");
+    }
   } else
       printf("Not LoRa Beacon. CoAP parse ERROR\n\r");
   printf("\n\r");
@@ -185,6 +195,7 @@ PROCESS_THREAD(lorafab_bcn_process, ev, data) {
   layer802154_on();
 
   etimer_set(&rx_timer, 5*CLOCK_SECOND);
+  event_data_ready = process_alloc_event();
 
   while(1) {
     PROCESS_WAIT_EVENT();
