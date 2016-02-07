@@ -25,7 +25,6 @@ static void eventhandler(process_event_t ev, process_data_t data) {
 
   int i;
   coap_packet_t *p;
-  void *response = NULL;
   static coap_packet_t coap_response[1];
   uint8_t tx_buffer[512];
   size_t coap_packet_size;
@@ -33,31 +32,26 @@ static void eventhandler(process_event_t ev, process_data_t data) {
 
   p = (coap_packet_t *)data;
   printf("Size of the PAYLoad = %d\n\r",p->payload_len);
-  for (i=0;i<p->payload_len;i++) 
-    printf("%02x",*(p->payload+i));
     
-    coap_init_message(coap_response, COAP_TYPE_ACK, 0, p->mid);
-    coap_set_status_code (coap_response, CHANGED_2_04);
-      if (!eapKeyAvailable) {
-          printf ("---------------EAP EXCHANGE IN COURSE \n\r");
-          eapReq = TRUE;
-          eap_peer_sm_step (p->payload);
-          if (eapResp) {
-              printf ("Hay EAP response %d\n\r", NTOHS(((struct eap_msg *) eapRespData)->length));
-          } else {
-              printf ("NO HAY EAP RESPONSE\n\r");
-          }
-          coap_set_payload(coap_response, eapRespData, NTOHS(((struct eap_msg *) eapRespData)->length));
-          coap_packet_size = coap_serialize_message(coap_response, (void *)(tx_buffer ));
-	  tx_buffer_index = coap_packet_size; 
-
-      } else {
-          // EAP EXCHANGE FINISHED
-          printf ("EAP EXCHANGE FINISHED\n\r");
-      } 
-      // send the coap msgs with the SIGNALIZATIO BIT set.
-      printf("We are sending the response to the COAP PUT\n\r");
-      layer802154_send(tx_buffer, tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
+  coap_init_message(coap_response, COAP_TYPE_ACK, 0, p->mid);
+  coap_set_status_code (coap_response, CHANGED_2_04);
+  if (!eapKeyAvailable) {
+       printf ("EAP EXCHANGE IN COURSE \n\r");
+       eapReq = TRUE;
+       eap_peer_sm_step (p->payload);
+       coap_set_payload(coap_response, eapRespData, NTOHS(((struct eap_msg *) eapRespData)->length));
+       coap_packet_size = coap_serialize_message(coap_response, (void *)(tx_buffer ));
+       tx_buffer_index = coap_packet_size; 
+  } else {
+       printf ("EAP EXCHANGE FINISHED\n\r");
+       // verify if its EAP method = 03, as in EAP Success!	
+       if (*(p->payload) == 0x03) {
+       	authenticated = TRUE;
+       }
+  } 
+  // send the coap msgs with the SIGNALIZATIO BIT set.
+  printf("WE SENDING RESPONSE TO COAP PUT\n\r");
+  layer802154_send(tx_buffer, tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
 }
 
 PROCESS(eap_responder_process, "EAP responder process");
@@ -70,6 +64,7 @@ PROCESS_THREAD(eap_responder_process, ev, data)
       printf("\n\rEAP PROCESS EVENT SIGNALLED\n\r");
       eventhandler(ev, data);
       if(authenticated) {
+      		printf("\n\rEAP PROCESS EXITED\n\r");
 		PROCESS_EXIT();
       }
     }
