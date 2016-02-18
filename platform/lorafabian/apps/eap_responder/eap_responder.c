@@ -8,17 +8,24 @@
 #include "eap_responder.h"
 #include "test.h"
 #include "layer802154_radio_lora.h"
+#include "frame_manager.h"
 //#include "_cantcoap.h"
 
 
 
-static uint8_t authenticated = FALSE; 
+uint8_t authenticated = FALSE;
+static struct etimer et;
+uint8_t state;
+
 void eap_responder_init()
 {
   process_start(&eap_responder_process, NULL); 
+}
+
+void eap_responder_sm_init() {
+
   eapRestart = TRUE;
   eap_peer_sm_step(NULL);
-
 }
 
 static void eventhandler(process_event_t ev, process_data_t data) {
@@ -31,12 +38,10 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   int tx_buffer_index;
 
   p = (coap_packet_t *)data;
-  printf("Size of the PAYLoad = %d\n\r",p->payload_len);
     
   coap_init_message(coap_response, COAP_TYPE_ACK, 0, p->mid);
   coap_set_status_code (coap_response, CHANGED_2_04);
   if (!eapKeyAvailable) {
-       printf ("EAP EXCHANGE IN COURSE \n\r");
        eapReq = TRUE;
        eap_peer_sm_step (p->payload);
        coap_set_payload(coap_response, eapRespData, NTOHS(((struct eap_msg *) eapRespData)->length));
@@ -50,22 +55,40 @@ static void eventhandler(process_event_t ev, process_data_t data) {
        }
   } 
   // send the coap msgs with the SIGNALIZATIO BIT set.
-  printf("WE SENDING RESPONSE TO COAP PUT\n\r");
+  printf("WE ARE SENDING RESPONSE TO COAP PUT\n\r");
   layer802154_send(tx_buffer, tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
+}
+
+static void timeout_handler() {
+  // if the node is not authenticated within this timeout interval;
+  // start responding to beacons again after the timeout
+  etimer_set(&et, 45*CLOCK_SECOND);
+  state = 0;
 }
 
 PROCESS(eap_responder_process, "EAP responder process");
 PROCESS_THREAD(eap_responder_process, ev, data)
 {
   PROCESS_BEGIN();
+  etimer_set(&et, 1*CLOCK_SECOND);
+  state = 1;
   while (1)
     {
-      PROCESS_WAIT_EVENT_UNTIL (ev == event_data_ready);
-      printf("\n\rEAP PROCESS EVENT SIGNALLED\n\r");
-      eventhandler(ev, data);
+      PROCESS_YIELD();
+
+      if(etimer_expired(&et)) {
+        if(!state) {
+	  authenticated = FALSE;
+	  is_associated = 0;
+	  printf("\n\rEAP PROCESS TIMED OUT!\n\r");
+	}
+	timeout_handler();
+      } else if(ev == event_data_ready) {
+        eventhandler(ev, data);
+      }
       if(authenticated) {
-      		printf("\n\rEAP PROCESS EXITED\n\r");
-		PROCESS_EXIT();
+	printf("\n\rEAP PROCESS EXITED\n\r");
+	PROCESS_EXIT();
       }
     }
   PROCESS_END();
