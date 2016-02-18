@@ -299,7 +299,7 @@ void process(const uint8_t * eapReqData, uint8_t * methodState, uint8_t * decisi
 			
 			*(methodState)= MAY_CONT;
 			*(decision)=COND_SUCC;
-			printf(" REQ FIRST\n\r");
+			printf("FIRST REQ\n\r");
 
 		}
 		//else if (step==3){ //EAP-PSK third message
@@ -338,6 +338,7 @@ void process(const uint8_t * eapReqData, uint8_t * methodState, uint8_t * decisi
 			*(decision)=COND_SUCC;
 			//psk_key_available=TRUE;
 			eapKeyAvailable = TRUE;
+			printf("SECOND REQ\n\r");
 		}	
 	}
 }
@@ -395,6 +396,7 @@ void buildResp(uint8_t * eapRespData, const uint8_t identifier){
 
 		//psk_key_available = TRUE;
 		eapKeyAvailable = TRUE;
+		printf("BUILD RESP FOURTH\n\r");
 	} 
 	
 }
