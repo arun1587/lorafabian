@@ -62,7 +62,6 @@ static void buildIdentity(const uint8_t id){
 
 //EAP peer state machine step function
 void eap_peer_sm_step(const uint8_t* msg){
-	printf("IN EAP PEER STEP\n\r");
 	//INITIALIZE STATE
 	if (eapRestart){
 		
