@@ -61,6 +61,7 @@ Description: Arduino SPI interface
 void frame_manager_init();
 
 extern struct process lorafab_bcn_process;
+extern int is_associated;
 
 #endif // __FRAME_MANAGER_H__
 
