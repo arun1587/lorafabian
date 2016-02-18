@@ -47,7 +47,7 @@ channel configured in sx1272_contiki_radio.c
 #include "cfs/cfs.h"
 #include <string.h>
 #include "eap_responder.h"
-#include "test1.c"
+//#include "_cantcoap.h"
 
 static struct etimer rx_timer;
 static struct etimer timer_payload_beacon;
@@ -56,7 +56,7 @@ process_event_t event_data_ready;
 //The response to the beacon
 char coap_payload_beacon[150];
 
-static int is_associated = 0;
+int is_associated = 0;
 static int is_beacon_receive = 0;
 
 void frame_manager_init()
@@ -137,6 +137,8 @@ coap_beacon_send_response() {
   //the node is registered after the first response
   //TODO: implement State Machine
   is_associated = 1;
+  is_beacon_receive = 0;   // start responding to beacon, upon timeout
+  eap_responder_sm_init(); // init eap_sm, upon timeout
 }
 
 /**
@@ -164,7 +166,8 @@ int respond_if_coap_beacon(u8 rx_msg[], int size) {
       printf("\n\r\tThis is the LoRA CoAP Beacon\n\r");
       return 1;
     } else if((coap_message->code == COAP_PUT)
-                            && (coap_message->payload_len != 0)) {
+                            && (coap_message->payload_len != 0)
+				&& (authenticated != TRUE)) {
         printf("EAP CoAP Message of len=%d.\n\r",coap_message->payload_len);
 	// post an event to EAP responder and pass the coap pckt
 	process_post_synch(&eap_responder_process, event_data_ready,coap_message);
@@ -199,7 +202,6 @@ PROCESS_THREAD(lorafab_bcn_process, ev, data) {
 
   while(1) {
     PROCESS_WAIT_EVENT();
-
     if(is_beacon_receive && !is_associated && etimer_expired(&timer_payload_beacon))
     {
       etimer_stop(&timer_payload_beacon);
