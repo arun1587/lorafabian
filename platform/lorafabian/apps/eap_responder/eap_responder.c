@@ -28,6 +28,11 @@ void eap_responder_sm_init() {
   eap_peer_sm_step(NULL);
 }
 
+void eap_responder_timer_init() {
+  printf("\n\r eap_responder timer reset\n\r");
+  etimer_set(&et, 45*CLOCK_SECOND);
+}
+
 static void eventhandler(process_event_t ev, process_data_t data) {
 
   int i;
@@ -62,6 +67,11 @@ static void eventhandler(process_event_t ev, process_data_t data) {
 static void timeout_handler() {
   // if the node is not authenticated within this timeout interval;
   // start responding to beacons again after the timeout
+  if(!state) {
+	authenticated = FALSE;
+	is_associated = 0;
+	printf("\n\rEAP PROCESS TIMED OUT!\n\r");
+  }
   etimer_set(&et, 45*CLOCK_SECOND);
   state = 0;
 }
@@ -77,14 +87,12 @@ PROCESS_THREAD(eap_responder_process, ev, data)
       PROCESS_YIELD();
 
       if(etimer_expired(&et)) {
-        if(!state) {
-	  authenticated = FALSE;
-	  is_associated = 0;
-	  printf("\n\rEAP PROCESS TIMED OUT!\n\r");
-	}
 	timeout_handler();
       } else if(ev == event_data_ready) {
         eventhandler(ev, data);
+      } else if(ev == event_timeout) {
+	printf("\n\rEAP PROCESS timeout signalled\n\r");
+	eap_responder_timer_init();
       }
       if(authenticated) {
 	printf("\n\rEAP PROCESS EXITED\n\r");

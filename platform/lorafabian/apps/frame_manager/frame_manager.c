@@ -52,6 +52,7 @@ channel configured in sx1272_contiki_radio.c
 static struct etimer rx_timer;
 static struct etimer timer_payload_beacon;
 process_event_t event_data_ready;
+process_event_t event_timeout;
 
 //The response to the beacon
 char coap_payload_beacon[150];
@@ -139,6 +140,8 @@ coap_beacon_send_response() {
   is_associated = 1;
   is_beacon_receive = 0;   // start responding to beacon, upon timeout
   eap_responder_sm_init(); // init eap_sm, upon timeout
+  process_post_synch(&eap_responder_process, event_timeout,NULL);
+
 }
 
 /**
@@ -199,6 +202,7 @@ PROCESS_THREAD(lorafab_bcn_process, ev, data) {
 
   etimer_set(&rx_timer, 5*CLOCK_SECOND);
   event_data_ready = process_alloc_event();
+  event_timeout = process_alloc_event();
 
   while(1) {
     PROCESS_WAIT_EVENT();
