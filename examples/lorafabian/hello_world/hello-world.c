@@ -41,6 +41,7 @@
 #include "contiki.h"
 #include "stm32f10x.h"
 #include "frame_manager.h"
+#include "eap_responder.h"
 #include <stdio.h> /* For printf() */
 #include "status_led.h"
 
@@ -60,14 +61,12 @@ PROCESS_THREAD(hello_world_process, ev, data)
 {
   PROCESS_BEGIN();
   frame_manager_init();
-
-
+  eap_responder_init();
 	status_led_init();
 	status_led_rx_on(led_on);
 	status_led_tx_on(led_on);
 
   etimer_set(&et_hello, 1 * CLOCK_SECOND);
-
   while( 1 )
   {
 

@@ -6,7 +6,8 @@
 
 #CODEPROP_SOURCES = codeprop-otf.c ram-segments.c
 
-APPS += er-coap rest-engine #cantcoap
+APPS += cantcoap
+#APPS += rest-engine er-coap
 APPS_INCLUDE_PATH = $(CONTIKI)/apps/
 ifdef APPS
   APPDS = ${wildcard ${foreach DIR, $(APPDIRS), ${addprefix $(DIR)/, $(APPS)}}} \

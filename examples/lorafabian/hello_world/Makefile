@@ -11,7 +11,7 @@ USE_USBCDC_TRACE = 0
 USE_LORA_1272_RADIO = 1
 
 #UIP_CONF_IPV6=1
-#APPS = serial-shell
+#APPS += er-coap rest-engine
 
 CONTIKI = ../../..
 include $(CONTIKI)/Makefile.include

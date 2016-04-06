@@ -6,8 +6,8 @@
 #include <dev/leds.h>
 #include <stdio.h>
 #include "arduino_spi.h"
-#include "er-coap.h"
-#include "er-coap-constants.h"
+//#include "er-coap.h"
+//#include "er-coap-constants.h"
 
 #include "frame802154_lora.h"
 #include "sx1272_contiki_radio.h"

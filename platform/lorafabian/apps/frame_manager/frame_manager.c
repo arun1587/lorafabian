@@ -40,14 +40,15 @@ channel configured in sx1272_contiki_radio.c
 #include "layer802154_radio_lora.h"
 #include "arduino_spi.h"
 #include "debug_on_arduino.h"
-#include "er-coap.h"
-#include "er-coap-constants.h"
+//#include "er-coap.h"
+//#include "er-coap-constants.h"
 #include "frame_manager.h"
 #include "frame802154_lora.h"
 #include "cfs/cfs.h"
 #include <string.h>
 #include "eap_responder.h"
-//#include "_cantcoap.h"
+#include "_cantcoap.h"
+#include "uthash.h"
 
 static struct etimer rx_timer;
 static struct etimer timer_payload_beacon;
@@ -59,6 +60,8 @@ char coap_payload_beacon[150];
 
 int is_associated = 0;
 static int is_beacon_receive = 0;
+
+CoapPDU *coap_request;
 
 void frame_manager_init()
 {
@@ -100,7 +103,6 @@ void updateHOSTNAME()
   printf("HOSTNAME : %s\n\r", coap_payload_beacon);
 }
 
-
 /**
  * \brief: Send the coap_payload_beacon to layer802154
  */
@@ -110,36 +112,50 @@ coap_beacon_send_response() {
   uint8_t tx_buffer[512];
 
   size_t coap_packet_size;
-  static coap_packet_t coap_request[1];      //This way the packet can be treated as pointer as usual.
 
   unsigned short random_a = random_rand();
   char MAC[] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
   getMac(MAC);
 
-  unsigned short random_b = random_a ^ MAC[sizeof(MAC)-1]; //
-  coap_init_message(coap_request, COAP_TYPE_CON, COAP_POST, (coap_get_mid()+random_b)%65535);
 
+  unsigned short random_b = random_a ^ MAC[sizeof(MAC)-1]; //
+  reset(coap_request);
+  setVersion(coap_request,1);
+  setType(coap_request,COAP_CONFIRMABLE);
+  setCode(coap_request,COAP_POST);
+  int token=1;
+  setToken(coap_request,(uint8_t*)&token,0);
+  //setMessageID(coap_request,htons(0x0000));
+  setMessageID(coap_request,(random_b)%65535);
+  /*
+  int noresponseValue = 0x7f;
+  addOption(coap_request,COAP_OPTION_NO_RESPONSE,1,&noresponseValue);
+  _setURI(coap_request,"/b",2);
+
+  nonce_s = rand();
+  addOption(coap_request,COAP_OPTION_NONCE,4,&nonce_s);
+  addOption(coap_request,COAP_OPTION_NO_RESPONSE,1,&noresponseValue);
+  */
   // CoAP message Response we sent /no n the uri-path :
-  coap_set_header_uri_path(coap_request, "n/");
+  _setURI(coap_request, "/n", 2);
 
   //CoAP message Response we set the payload
-  int sizeMSG = strlen(coap_payload_beacon);
-  coap_set_payload(coap_request, (uint8_t *)coap_payload_beacon, sizeMSG);
+  setPayload(coap_request, (uint8_t *)coap_payload_beacon, strlen(coap_payload_beacon));
 
-  coap_packet_size = coap_serialize_message(coap_request, (void *)(tx_buffer ));
+  coap_packet_size = getPDULength(coap_request); 
   int tx_buffer_index = coap_packet_size;
   printf("We are sending the response to the coap beacon\n\r");
 
   //Note: We don't parse the beacon message yet, so the GATEWAY_ADDR
   //is defined in frame802154_lora.c
-  layer802154_send(tx_buffer, tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
+  layer802154_send(getPDUPointer(coap_request), tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
 
   //Note: We don't parse the beacon message yet, so we assume that
   //the node is registered after the first response
   //TODO: implement State Machine
   is_associated = 1;
   is_beacon_receive = 0;   // start responding to beacon, upon timeout
-  eap_responder_sm_init(); // init eap_sm, upon timeout
+  //eap_responder_sm_init(); // init eap_sm, upon timeout
   process_post_synch(&eap_responder_process, event_timeout,NULL);
 
 }
@@ -155,27 +171,24 @@ int respond_if_coap_beacon(u8 rx_msg[], int size) {
   for(iaux = 0 ; iaux<size ; iaux++)
     printf("%02x", rx_msg[iaux]);
 
-   //static declaration reduces stack peaks and program code size
-  static coap_packet_t coap_message[1]; //this way the packet can be treated as pointer as usual
-  erbium_status_code = NO_ERROR;
+  _CoapPDU_buf_withCPDU(coap_request, (uint8_t*)rx_msg, size);	
 
-  erbium_status_code =
-  coap_parse_message(coap_message, (void *)(rx_msg), size);
   printf("\n\r\tPayload is CoAP Beacon?: ");
-  if(erbium_status_code == NO_ERROR) {
-    int check_coap_beacon = (coap_message->type == COAP_TYPE_NON) && ((coap_message->code == COAP_POST)
-                            && (coap_message->payload_len == 0));
+  if(validate(coap_request))  {
+   int check_coap_beacon = (getType(coap_request) == COAP_NON_CONFIRMABLE) && 
+    					((getCode(coap_request) == COAP_POST) && 
+    						(getPayloadLength(coap_request) == 0)); 
     if(check_coap_beacon){
       printf("\n\r\tThis is the LoRA CoAP Beacon\n\r");
       return 1;
-    } else if((coap_message->code == COAP_PUT)
-                            && (coap_message->payload_len != 0)
-				&& (authenticated != TRUE)) {
-        printf("EAP CoAP Message of len=%d.\n\r",coap_message->payload_len);
-	// post an event to EAP responder and pass the coap pckt
-	process_post_synch(&eap_responder_process, event_data_ready,coap_message);
+    } else if((getCode(coap_request) == COAP_PUT)
+                            && (getPayloadLength(coap_request) != 0)
+                                && (authenticated != TRUE)) {
+        printf("EAP CoAP Message of len=%d.\n\r",getPayloadLength(coap_request));
+        // post an event to EAP responder and pass the coap pckt
+        process_post_synch(&eap_responder_process, event_data_ready,coap_request);
     } else {
-	printf("Other CoAP Message\n\r");
+        printf("Other CoAP Message\n\r");
     }
   } else
       printf("Not LoRa Beacon. CoAP parse ERROR\n\r");
@@ -203,6 +216,8 @@ PROCESS_THREAD(lorafab_bcn_process, ev, data) {
   etimer_set(&rx_timer, 5*CLOCK_SECOND);
   event_data_ready = process_alloc_event();
   event_timeout = process_alloc_event();
+  printf("\n\r before coap_request\n\r");
+  coap_request = _CoapPDU();
 
   while(1) {
     PROCESS_WAIT_EVENT();
