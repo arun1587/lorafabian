@@ -10,11 +10,18 @@
 #include "frame_manager.h"
 #include "_cantcoap.h"
 
+# define SEQ_LEN 22
+# define KEY_LEN 16
+# define AUTH_LEN 16
 
 
 uint8_t authenticated = FALSE;
 static struct etimer et;
 uint8_t state;
+unsigned char auth_key[KEY_LEN] = {0};
+unsigned char sequence[SEQ_LEN] = {0};
+
+uint8_t authKeyAvailable;
 
 CoapPDU *coap_response, *p;
 
@@ -26,6 +33,7 @@ void eap_responder_init()
 void eap_responder_sm_init() {
 
   printf("\n\r eap_responder init statemachine\n\r");
+  memset( & msk_key, 0, MSK_LENGTH);
   eapRestart = TRUE;
   eap_peer_sm_step(NULL);
 }
@@ -41,6 +49,14 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   uint8_t tx_buffer[512];
   size_t coap_packet_size;
   int tx_buffer_index;
+
+  unsigned char *ptr;
+  uint8_t mac2check[AUTH_LEN] = {0};
+  memset(mac2check, 0, AUTH_LEN);
+  uint8_t mac[AUTH_LEN] = {0};
+  memset(mac, 0, 16);
+  unsigned char _auth_key[KEY_LEN] = {0};
+  memset(_auth_key, 0, KEY_LEN);
    
   // TODO implement the check for retransmission 
    
@@ -53,9 +69,9 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   int token=1;
   setToken(coap_response,(uint8_t*)&token,0);
   setMessageID(coap_response, getMessageID(p));
+  eapReq = TRUE;
 
   if (!eapKeyAvailable) {
-       eapReq = TRUE;
        eap_peer_sm_step (getPayloadPointer(p));
        setPayload(coap_response, eapRespData, NTOHS(((struct eap_msg *) eapRespData)->length));
 
@@ -63,11 +79,70 @@ static void eventhandler(process_event_t ev, process_data_t data) {
        tx_buffer_index = coap_packet_size; 
   } else {
        printf ("EAP EXCHANGE FINISHED\n\r");
+       ptr = (unsigned char * ) & sequence;
+
+       unsigned char label[] = "IETF COAP AUTH";
+       memcpy(ptr, label, (size_t)14);
+       ptr += 14;
+
+       memcpy(&nonce_c, getOptionPointer(p, COAP_OPTION_NONCE), (size_t) getOptionLength(p, COAP_OPTION_NONCE));
+       memcpy(ptr, &nonce_c, sizeof(uint32_t));
+       ptr += 4;
+
+       memcpy(ptr, &nonce_s, sizeof(uint32_t));
+
+       do_omac(msk_key, sequence, SEQ_LEN, _auth_key);
+       authKeyAvailable = TRUE;
+
+       // Verify the AUTH Option
+       // Copy the mac
+       memcpy( &mac2check, getPDUPointer(p) + getPDULength(p)-16-5, 16);
+       // Zeroing the mac in meesage
+       memcpy(getPDUPointer(p) + getPDULength(p)-16-5, &mac, 16);
+       // Setting the MAC
+       do_omac(_auth_key, getPDUPointer(p), getPDULength(p), mac);
+
+       if (memcmp( &mac2check, &mac, AUTH_LEN) != 0) {
+       	printf("error\n\r");
+       }
+
+       memset(mac2check, 0, AUTH_LEN);
+
        // verify if its EAP method = 03, as in EAP Success!	
        if (*(getPayloadPointer(p)) == 0x03) {
        	authenticated = TRUE;
        }
   } 
+
+/*
+
+        if ((getCode(request) == COAP_POST)) {
+
+            if (!state) {
+                state++;
+                _setURI(response, & URI[0], 4);
+            }
+            if (!authKeyAvailable) {
+                if (eapResp) {
+                    uint16_t len = ntohs(((struct eap_msg * )eapRespData)-> length);
+                    setPayload(response, eapRespData, len);
+                }
+            } else {
+                addOption(response, COAP_OPTION_AUTH, AUTH_LEN, (uint8_t*)&mac2check);
+
+                do_omac(_auth_key, getPDUPointer(response),
+                    getPDULength(response), mac2check);
+                memcpy(getPDUPointer(response) + getPDULength(response)-16, &mac2check, 16);
+            }
+
+            uip_udp_packet_send(client_conn, getPDUPointer(response), (size_t) getPDULength(response));
+
+            memcpy(sent, getPDUPointer(response), (size_t) getPDULength(response));
+            sent_len = getPDULength(response);
+
+        }
+*/
+  
   // send the coap msgs with the SIGNALIZATIO BIT set.
   printf("WE ARE SENDING RESPONSE TO COAP PUT\n\r");
   layer802154_send(getPDUPointer(coap_response), tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
