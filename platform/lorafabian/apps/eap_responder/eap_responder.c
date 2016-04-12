@@ -17,6 +17,7 @@
 
 uint8_t authenticated = FALSE;
 static struct etimer et;
+
 uint8_t state;
 unsigned char auth_key[KEY_LEN] = {0};
 unsigned char sequence[SEQ_LEN] = {0};
@@ -45,7 +46,6 @@ void eap_responder_timer_init() {
 
 static void eventhandler(process_event_t ev, process_data_t data) {
 
-  int i;
   uint8_t tx_buffer[512];
   size_t coap_packet_size;
   int tx_buffer_index;
@@ -58,10 +58,49 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   unsigned char _auth_key[KEY_LEN] = {0};
   memset(_auth_key, 0, KEY_LEN);
    
-  // TODO implement the check for retransmission 
-   
   p = (CoapPDU *)data;
     
+  if (eapKeyAvailable) {
+       printf ("EAP EXCHANGE FINISHED\n\r");
+       // verify if its EAP method = 03, as in EAP Success!	
+       if (*(getPayloadPointer(p)) == 0x03) {
+       		authenticated = TRUE;
+       		ptr = (unsigned char *)&sequence;
+
+      	 	unsigned char label[] = "IETF COAP AUTH";
+       		memcpy(ptr, label, (size_t)14);
+       		ptr += 14;
+
+       		memcpy(&nonce_c, getOptionPointer(p, COAP_OPTION_NONCE), (size_t)getOptionLength(p, COAP_OPTION_NONCE));
+     		memcpy(ptr, &nonce_c, sizeof(uint32_t));
+       		ptr += 4;
+
+       		memcpy(ptr, &nonce_s, sizeof(uint32_t));
+
+       		do_omac(msk_key, sequence, SEQ_LEN, _auth_key);
+       		authKeyAvailable = TRUE;
+
+       		// Verify the AUTH Option
+       		// Copy the mac
+       		memcpy(&mac2check, getPDUPointer(p)+getPDULength(p)-16-5, 16);
+       		// Zeroing the mac in message
+       		memcpy(getPDUPointer(p)+getPDULength(p)-16-5, &mac, 16);
+       		// Setting the MAC
+       		do_omac(_auth_key, getPDUPointer(p), getPDULength(p), mac);
+
+       		if (memcmp(&mac2check, &mac, AUTH_LEN) != 0) {
+       			printf("error\n\r");
+       		}
+
+       		memset(mac2check, 0, AUTH_LEN);
+       }
+
+  } 
+
+  eapReq = TRUE;
+  eap_peer_sm_step (getPayloadPointer(p));
+  
+  // Building Response
   reset(coap_response);
   setVersion(coap_response,1);
   setType(coap_response,COAP_ACKNOWLEDGEMENT);
@@ -69,109 +108,38 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   int token=1;
   setToken(coap_response,(uint8_t*)&token,0);
   setMessageID(coap_response, getMessageID(p));
-  eapReq = TRUE;
 
-  if (!eapKeyAvailable) {
-       eap_peer_sm_step (getPayloadPointer(p));
-       setPayload(coap_response, eapRespData, NTOHS(((struct eap_msg *) eapRespData)->length));
-
-       coap_packet_size = getPDULength(coap_response);
-       tx_buffer_index = coap_packet_size; 
+  if (!authKeyAvailable) {
+	if(eapResp) {
+  		setPayload(coap_response, eapRespData, NTOHS(((struct eap_msg *)eapRespData)->length));
+    	}
   } else {
-       printf ("EAP EXCHANGE FINISHED\n\r");
-       ptr = (unsigned char * ) & sequence;
+    	printf("adding the Authkey!!\n\r");
+    	addOption(coap_response, COAP_OPTION_AUTH, AUTH_LEN, (uint8_t*)&mac2check);
+    	do_omac(_auth_key, getPDUPointer(coap_response),
+    	getPDULength(coap_response), mac2check);
+    	memcpy(getPDUPointer(coap_response)+getPDULength(coap_response)-16, &mac2check, 16);
+  }
 
-       unsigned char label[] = "IETF COAP AUTH";
-       memcpy(ptr, label, (size_t)14);
-       ptr += 14;
+  coap_packet_size = getPDULength(coap_response);
+  tx_buffer_index = coap_packet_size; 
 
-       memcpy(&nonce_c, getOptionPointer(p, COAP_OPTION_NONCE), (size_t) getOptionLength(p, COAP_OPTION_NONCE));
-       memcpy(ptr, &nonce_c, sizeof(uint32_t));
-       ptr += 4;
-
-       memcpy(ptr, &nonce_s, sizeof(uint32_t));
-
-       do_omac(msk_key, sequence, SEQ_LEN, _auth_key);
-       authKeyAvailable = TRUE;
-
-       // Verify the AUTH Option
-       // Copy the mac
-       memcpy( &mac2check, getPDUPointer(p) + getPDULength(p)-16-5, 16);
-       // Zeroing the mac in meesage
-       memcpy(getPDUPointer(p) + getPDULength(p)-16-5, &mac, 16);
-       // Setting the MAC
-       do_omac(_auth_key, getPDUPointer(p), getPDULength(p), mac);
-
-       if (memcmp( &mac2check, &mac, AUTH_LEN) != 0) {
-       	printf("error\n\r");
-       }
-
-       memset(mac2check, 0, AUTH_LEN);
-
-       // verify if its EAP method = 03, as in EAP Success!	
-       if (*(getPayloadPointer(p)) == 0x03) {
-       	authenticated = TRUE;
-       }
-  } 
-
-/*
-
-        if ((getCode(request) == COAP_POST)) {
-
-            if (!state) {
-                state++;
-                _setURI(response, & URI[0], 4);
-            }
-            if (!authKeyAvailable) {
-                if (eapResp) {
-                    uint16_t len = ntohs(((struct eap_msg * )eapRespData)-> length);
-                    setPayload(response, eapRespData, len);
-                }
-            } else {
-                addOption(response, COAP_OPTION_AUTH, AUTH_LEN, (uint8_t*)&mac2check);
-
-                do_omac(_auth_key, getPDUPointer(response),
-                    getPDULength(response), mac2check);
-                memcpy(getPDUPointer(response) + getPDULength(response)-16, &mac2check, 16);
-            }
-
-            uip_udp_packet_send(client_conn, getPDUPointer(response), (size_t) getPDULength(response));
-
-            memcpy(sent, getPDUPointer(response), (size_t) getPDULength(response));
-            sent_len = getPDULength(response);
-
-        }
-*/
-  
-  // send the coap msgs with the SIGNALIZATIO BIT set.
-  printf("WE ARE SENDING RESPONSE TO COAP PUT\n\r");
+  // send the coap msgs with the SIGNALIZATION BIT set.
+  printf("WE ARE SENDING RESPONSE TO COAP POST\n\r");
   layer802154_send(getPDUPointer(coap_response), tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
   eap_responder_timer_init();
-  
-  
-  // TODO copy the last sent packet in case of retransmission
-}
 
-/*
-static void timeout_handler() {
-  // if the node is not authenticated within this timeout interval;
-  // start responding to beacons again after the timeout
-  if(!state) {
-	authenticated = FALSE;
-	is_associated = 0;
-	printf("\n\rEAP PROCESS TIMED OUT!\n\r");
-  // TODO eap_responder_sm_init(), try removing the state
-  }
-  etimer_set(&et, 45*CLOCK_SECOND);
-  state = 0;
 }
-*/
 
 static void timeout_handler() {
   // if the node is not authenticated within this timeout interval;
   // start responding to beacons again after the timeout
   authenticated = FALSE;
   is_associated = 0;
+  
+  memset(&auth_key, 0, AUTH_LEN);
+  memset(&sequence, 0, SEQ_LEN);
+  authKeyAvailable = 0;
   eap_responder_sm_init();
   printf("\n\rEAP PROCESS TIMED OUT, timer reset!\n\r");
   etimer_set(&et, 45*CLOCK_SECOND);

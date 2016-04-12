@@ -299,7 +299,7 @@ void process(const uint8_t * eapReqData, uint8_t * methodState, uint8_t * decisi
 			
 			*(methodState)= MAY_CONT;
 			*(decision)=COND_SUCC;
-			printf("FIRST REQ\n\r");
+			printf("EAP-PSK1 recv\n\r");
 
 		}
 		//else if (step==3){ //EAP-PSK third message
@@ -338,7 +338,7 @@ void process(const uint8_t * eapReqData, uint8_t * methodState, uint8_t * decisi
 			*(decision)=COND_SUCC;
 			//psk_key_available=TRUE;
 			eapKeyAvailable = TRUE;
-			printf("SECOND REQ\n\r");
+			printf("EAP-PSK3 recv\n\r");
 		}	
 	}
 }
@@ -370,7 +370,7 @@ void buildResp(uint8_t * eapRespData, const uint8_t identifier){
 		memcpy(eapRespData+38, output, 16); //output == mac_p
 		//memcpy(eapRespData+54, id_p, ID_P_LENGTH);
 		sprintf(eapRespData+54, "%s", "client");
-		printf("BUILD RESP SECOND\n\r");
+		printf("EAP-PSK2 send\n\r");
 
 	}
 	else if (step==4){ //EAP-PSK fourth message
@@ -396,7 +396,7 @@ void buildResp(uint8_t * eapRespData, const uint8_t identifier){
 
 		//psk_key_available = TRUE;
 		eapKeyAvailable = TRUE;
-		printf("BUILD RESP FOURTH\n\r");
+		printf("EAP-PSK4 send\n\r");
 	} 
 	
 }

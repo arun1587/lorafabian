@@ -60,6 +60,7 @@ char coap_payload_beacon[150];
 
 int is_associated = 0;
 static int is_beacon_receive = 0;
+uint32_t nonce_c, nonce_s;
 
 CoapPDU *coap_request;
 
@@ -91,6 +92,7 @@ void updateHOSTNAME()
     int i;
     for(i = 0; i != sizeof(final) +1; ++i)
       final[i] = dns[i];
+
     strcpy(coap_payload_beacon, "{\"n\":\"");
     strcat(coap_payload_beacon, final);
     strcat(coap_payload_beacon, "\"}");
@@ -108,7 +110,9 @@ void updateHOSTNAME()
  */
 void
 coap_beacon_send_response() {
-  updateHOSTNAME();
+  //updateHOSTNAME();
+  strcpy(coap_payload_beacon, "usera2");
+  printf("HOSTNAME : %s\n\r", coap_payload_beacon);
   uint8_t tx_buffer[512];
 
   size_t coap_packet_size;
@@ -125,19 +129,16 @@ coap_beacon_send_response() {
   setCode(coap_request,COAP_POST);
   int token=1;
   setToken(coap_request,(uint8_t*)&token,0);
-  //setMessageID(coap_request,htons(0x0000));
-  setMessageID(coap_request,(random_b)%65535);
-  /*
+  setMessageID(coap_request,htons(0x0000));
+
   int noresponseValue = 0x7f;
-  addOption(coap_request,COAP_OPTION_NO_RESPONSE,1,&noresponseValue);
   _setURI(coap_request,"/b",2);
 
   nonce_s = rand();
+  printf("nonce_s added = %02x\n\r",nonce_s);
   addOption(coap_request,COAP_OPTION_NONCE,4,&nonce_s);
   addOption(coap_request,COAP_OPTION_NO_RESPONSE,1,&noresponseValue);
-  */
-  // CoAP message Response we sent /no n the uri-path :
-  _setURI(coap_request, "/n", 2);
+
 
   //CoAP message Response we set the payload
   setPayload(coap_request, (uint8_t *)coap_payload_beacon, strlen(coap_payload_beacon));
@@ -155,7 +156,7 @@ coap_beacon_send_response() {
   //TODO: implement State Machine
   is_associated = 1;
   is_beacon_receive = 0;   // start responding to beacon, upon timeout
-  //eap_responder_sm_init(); // init eap_sm, upon timeout
+  
   process_post_synch(&eap_responder_process, event_timeout,NULL);
 
 }
@@ -181,7 +182,7 @@ int respond_if_coap_beacon(u8 rx_msg[], int size) {
     if(check_coap_beacon){
       printf("\n\r\tThis is the LoRA CoAP Beacon\n\r");
       return 1;
-    } else if((getCode(coap_request) == COAP_PUT)
+    } else if((getCode(coap_request) == COAP_POST)
                             && (getPayloadLength(coap_request) != 0)
                                 && (authenticated != TRUE)) {
         printf("EAP CoAP Message of len=%d.\n\r",getPayloadLength(coap_request));
@@ -216,11 +217,11 @@ PROCESS_THREAD(lorafab_bcn_process, ev, data) {
   etimer_set(&rx_timer, 5*CLOCK_SECOND);
   event_data_ready = process_alloc_event();
   event_timeout = process_alloc_event();
-  printf("\n\r before coap_request\n\r");
   coap_request = _CoapPDU();
 
   while(1) {
     PROCESS_WAIT_EVENT();
+    printf("\n\rbeacon receive = %d is_associated = %d \n\r",is_beacon_receive, is_associated);
     if(is_beacon_receive && !is_associated && etimer_expired(&timer_payload_beacon))
     {
       etimer_stop(&timer_payload_beacon);
