@@ -18,9 +18,20 @@
 uint8_t authenticated = FALSE;
 static struct etimer et;
 
-uint8_t state;
+uint8_t lstate;
 unsigned char auth_key[KEY_LEN] = {0};
 unsigned char sequence[SEQ_LEN] = {0};
+
+char URI[8] = {
+    '/',
+    'b',
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+};
 
 uint8_t authKeyAvailable;
 
@@ -57,9 +68,20 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   memset(mac, 0, 16);
   unsigned char _auth_key[KEY_LEN] = {0};
   memset(_auth_key, 0, KEY_LEN);
-   
+  uint8_t responsecode = COAP_CHANGED;
   p = (CoapPDU *)data;
     
+  if (!lstate) {
+	responsecode = COAP_CREATED;
+	// EAP Restart
+	//memset( & msk_key, 0, MSK_LENGTH);
+	//eapRestart = TRUE;
+	//eap_peer_sm_step(NULL);
+	// creating the id of the service
+	URI[2] = '/';
+	unsigned int random = rand() * 1000;
+	URI[3] = '0' + (random % 10);
+  }
   if (eapKeyAvailable) {
        printf ("EAP EXCHANGE FINISHED\n\r");
        // verify if its EAP method = 03, as in EAP Success!	
@@ -108,6 +130,12 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   int token=1;
   setToken(coap_response,(uint8_t*)&token,0);
   setMessageID(coap_response, getMessageID(p));
+ 
+
+  if (!lstate) {
+  	lstate++;
+ 	_setURI(coap_response, & URI[0], 4);
+  }
 
   if (!authKeyAvailable) {
 	if(eapResp) {
@@ -137,6 +165,7 @@ static void timeout_handler() {
   authenticated = FALSE;
   is_associated = 0;
   
+  lstate = 0;
   memset(&auth_key, 0, AUTH_LEN);
   memset(&sequence, 0, SEQ_LEN);
   authKeyAvailable = 0;
@@ -150,7 +179,6 @@ PROCESS_THREAD(eap_responder_process, ev, data)
 {
   PROCESS_BEGIN();
   etimer_set(&et, 1*CLOCK_SECOND);
-  state = 1;
   coap_response = _CoapPDU();
   while (1)
     {
