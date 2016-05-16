@@ -62,6 +62,8 @@ int is_associated = 0;
 static int is_beacon_receive = 0;
 uint32_t nonce_c, nonce_s;
 
+u8 received[170];
+
 CoapPDU *coap_request;
 
 void frame_manager_init()
@@ -111,7 +113,8 @@ void updateHOSTNAME()
 void
 coap_beacon_send_response() {
   //updateHOSTNAME();
-  strcpy(coap_payload_beacon, "usera2");
+  strcpy(coap_payload_beacon, "alpha.t.eu.org");
+  //strcpy(coap_payload_beacon, "usera2");
   printf("HOSTNAME : %s\n\r", coap_payload_beacon);
   uint8_t tx_buffer[512];
 
@@ -150,6 +153,7 @@ coap_beacon_send_response() {
   //Note: We don't parse the beacon message yet, so the GATEWAY_ADDR
   //is defined in frame802154_lora.c
   layer802154_send(getPDUPointer(coap_request), tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
+  printf("\n\r+++ clock after sending the beacon response %u\n", clock_time());
 
   //Note: We don't parse the beacon message yet, so we assume that
   //the node is registered after the first response
@@ -184,7 +188,12 @@ int respond_if_coap_beacon(u8 rx_msg[], int size) {
       return 1;
     } else if((getCode(coap_request) == COAP_POST)
                             && (getPayloadLength(coap_request) != 0)
-                                && (authenticated != TRUE)) {
+                                && (authenticated != TRUE) && (memcmp(rx_msg, received, size) !=0)) {
+                               // && (authenticated != TRUE)) {
+	// the duplicate packets from different antennas receive within short interval of time
+	// the retransmitted packets would arrive a bit later than these duplicate packets
+	// but in case of the antennas that are far apart, the packets would receive at a bigger time interval and
+	//  might seem like a retransmitted packet
         printf("EAP CoAP Message of len=%d.\n\r",getPayloadLength(coap_request));
         // post an event to EAP responder and pass the coap pckt
         process_post_synch(&eap_responder_process, event_data_ready,coap_request);
@@ -194,6 +203,7 @@ int respond_if_coap_beacon(u8 rx_msg[], int size) {
   } else
       printf("Not LoRa Beacon. CoAP parse ERROR\n\r");
   printf("\n\r");
+  memcpy(received, rx_msg, size);
   return 0;
 }
 
@@ -218,7 +228,7 @@ PROCESS_THREAD(lorafab_bcn_process, ev, data) {
   event_data_ready = process_alloc_event();
   event_timeout = process_alloc_event();
   coap_request = _CoapPDU();
-
+  printf("\n\r Value of a CLOCK SECOND = %d\n\r", CLOCK_SECOND);
   while(1) {
     PROCESS_WAIT_EVENT();
     printf("\n\rbeacon receive = %d is_associated = %d \n\r",is_beacon_receive, is_associated);
@@ -248,11 +258,13 @@ PROCESS_THREAD(lorafab_bcn_process, ev, data) {
           bool my_mac = is_my_mac(&frame);
           if(br_msg) {
             printf("Broadcast message");
+	    printf("\n\r+++ clock at beginning of bootstrapping %u\n", clock_time());
             if(!is_signaling(&frame) || debug_on_arduino)
               set_arduino_read_buf(frame.packet, packetSize);
           }
           else if(my_mac) {
             printf("Message is for me");
+	    printf("\n\r+++ clock at beginning of eap%u\n", clock_time());
             set_arduino_read_buf(frame.payload, frame.payload_len);
            }
           else {

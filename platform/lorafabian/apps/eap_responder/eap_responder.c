@@ -154,7 +154,9 @@ static void eventhandler(process_event_t ev, process_data_t data) {
 
   // send the coap msgs with the SIGNALIZATION BIT set.
   printf("WE ARE SENDING RESPONSE TO COAP POST\n\r");
+  printf("\n\rtick after building eap_response %u\n\r", clock_time());
   layer802154_send(getPDUPointer(coap_response), tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
+  printf("\n\rtick after send eap_responder %u\n\r", clock_time());
   eap_responder_timer_init();
 
 }
@@ -193,7 +195,9 @@ PROCESS_THREAD(eap_responder_process, ev, data)
       }
       if(authenticated) {
 	printf("\n\rEAP PROCESS EXITED\n\r");
-	PROCESS_EXIT();
+        printf("+++ clock at end of bootstrapping %u\n", clock_time());
+	//PROCESS_EXIT();
+	etimer_stop(&et);
       }
     }
   PROCESS_END();

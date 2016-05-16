@@ -82,12 +82,12 @@ void OnTxDone( void )
 {
    // Reset RF state
    lora_radio_driver.off();
-   printf("TX sent\n\r");
+   //printf("TX sent\n\r");
    tx_ongoing =0;
    status_led_tx_on(FALSE);
 #ifdef LORAFAB_RESTART_RX_AFTER_TX
     lora_radio_driver.on();
-    printf("Restart RX\n\r");
+    //printf("Restart RX\n\r");
 #endif
 
 }
