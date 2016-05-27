@@ -63,6 +63,6 @@ void frame_manager_init();
 extern struct process lorafab_bcn_process;
 extern int is_associated;
 extern uint32_t nonce_c, nonce_s;
-
+extern unsigned long bt_begin_time, bt_end_time;
 #endif // __FRAME_MANAGER_H__
 

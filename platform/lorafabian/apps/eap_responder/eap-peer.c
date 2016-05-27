@@ -23,7 +23,8 @@ static void buildIdentity(const uint8_t id){
 	
 	((struct eap_msg*) eapRespData)->code = RESPONSE_CODE;
 	((struct eap_msg*) eapRespData)->id = id;
-	((struct eap_msg*) eapRespData)->length = HTONS((sizeof(struct eap_msg) + strlen(USER)+1 ));
+	//((struct eap_msg*) eapRespData)->length = HTONS((sizeof(struct eap_msg) + strlen(USER)+1 ));
+	((struct eap_msg*) eapRespData)->length = HTONS((sizeof(struct eap_msg) + strlen(USER) ));
 	((struct eap_msg*) eapRespData)->method = IDENTITY;
 /*
 	if(node_id == 2){
@@ -56,7 +57,7 @@ static void buildIdentity(const uint8_t id){
 		sprintf(eapRespData + sizeof(struct eap_msg), "%s", (char *)USER);
 	}
 */
-		sprintf(eapRespData + sizeof(struct eap_msg), "%s", (char *)USER);
+		sprintf(eapRespData + sizeof(struct eap_msg), "%s", "alpha.t.eu.org");
 
 }
 

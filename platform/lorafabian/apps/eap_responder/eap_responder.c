@@ -10,7 +10,7 @@
 #include "frame_manager.h"
 #include "_cantcoap.h"
 
-# define SEQ_LEN 22
+# define SEQ_LEN 26  /*LABEL:14 + NONCE_S:4 + NONCE_C:4 + TOKEN_COAP:4*/
 # define KEY_LEN 16
 # define AUTH_LEN 16
 
@@ -21,7 +21,8 @@ static struct etimer et;
 uint8_t lstate;
 unsigned char auth_key[KEY_LEN] = {0};
 unsigned char sequence[SEQ_LEN] = {0};
-
+unsigned long tot_time;
+/*
 char URI[8] = {
     '/',
     'b',
@@ -32,10 +33,22 @@ char URI[8] = {
     0,
     0
 };
+*/
 
-uint8_t authKeyAvailable;
+char URI[8] = {'/','b','o','o','t', 0, 0, 0};
+uint8_t authKeyAvailable = 0;
 
 CoapPDU *coap_response, *p;
+
+void printf_hex(unsigned char *hex, unsigned int l){
+    int i;
+    if (hex != NULL){
+        for (i=0; i < l; i++)
+            printf("%02x",hex[i]);
+
+        printf("\n\r");
+    }
+}
 
 void eap_responder_init()
 {
@@ -45,7 +58,7 @@ void eap_responder_init()
 void eap_responder_sm_init() {
 
   printf("\n\r eap_responder init statemachine\n\r");
-  memset( & msk_key, 0, MSK_LENGTH);
+  memset(&msk_key, 0, MSK_LENGTH);
   eapRestart = TRUE;
   eap_peer_sm_step(NULL);
 }
@@ -62,79 +75,95 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   int tx_buffer_index;
 
   unsigned char *ptr;
-  uint8_t mac2check[AUTH_LEN] = {0};
-  memset(mac2check, 0, AUTH_LEN);
-  uint8_t mac[AUTH_LEN] = {0};
-  memset(mac, 0, 16);
-  unsigned char _auth_key[KEY_LEN] = {0};
-  memset(_auth_key, 0, KEY_LEN);
+  uint8_t mac2check[16]	={0};
+  uint8_t mac[16]	={0};
   uint8_t responsecode = COAP_CHANGED;
   p = (CoapPDU *)data;
+  
+
+  if(!lstate) {
+    //state = 1;
+    nonce_s = rand();
+    //printf("NONCE_S generated = %02x\n\r", nonce_s);
+    responsecode = COAP_CREATED;
     
-  if (!lstate) {
-	responsecode = COAP_CREATED;
-	// EAP Restart
-	//memset( & msk_key, 0, MSK_LENGTH);
-	//eapRestart = TRUE;
-	//eap_peer_sm_step(NULL);
-	// creating the id of the service
-	URI[2] = '/';
-	unsigned int random = rand() * 1000;
-	URI[3] = '0' + (random % 10);
-  }
-  if (eapKeyAvailable) {
-       printf ("EAP EXCHANGE FINISHED\n\r");
-       // verify if its EAP method = 03, as in EAP Success!	
-       if (*(getPayloadPointer(p)) == 0x03) {
-       		authenticated = TRUE;
-       		ptr = (unsigned char *)&sequence;
+    // We create the sequence
+    memcpy(&nonce_c, getPayloadPointer(p),(size_t)getPayloadLength(p));
+    //printf("NONCE_C received = %02x\n\r", nonce_c);
+    ptr = (unsigned char*)&sequence;
+    
+    unsigned char label[] = "IETF COAP AUTH";
+    memcpy(ptr,label,(size_t)14);
+    ptr += 14;
+    
+    memcpy(ptr,getTokenPointer(p),(size_t)getTokenLength(p));
+    ptr += 4;
+    
+    memcpy(ptr, &(nonce_c),sizeof(uint32_t));
+    ptr += 4;
+    
+    memcpy(ptr, &(nonce_s),sizeof(uint32_t));
+    
+    
+    // EAP Restart
+    memset(&msk_key,0, MSK_LENGTH);
+    eapRestart=TRUE;
+    eap_peer_sm_step(NULL);
+    authKeyAvailable = 0; 
+    // creating the id of the service
+    URI[5] = '/';
+    URI[6] = '0' + (rand() % 9);
+ }
 
-      	 	unsigned char label[] = "IETF COAP AUTH";
-       		memcpy(ptr, label, (size_t)14);
-       		ptr += 14;
-
-       		memcpy(&nonce_c, getOptionPointer(p, COAP_OPTION_NONCE), (size_t)getOptionLength(p, COAP_OPTION_NONCE));
-     		memcpy(ptr, &nonce_c, sizeof(uint32_t));
-       		ptr += 4;
-
-       		memcpy(ptr, &nonce_s, sizeof(uint32_t));
-
-       		do_omac(msk_key, sequence, SEQ_LEN, _auth_key);
-       		authKeyAvailable = TRUE;
-
-       		// Verify the AUTH Option
-       		// Copy the mac
-       		memcpy(&mac2check, getPDUPointer(p)+getPDULength(p)-16-5, 16);
-       		// Zeroing the mac in message
-       		memcpy(getPDUPointer(p)+getPDULength(p)-16-5, &mac, 16);
-       		// Setting the MAC
-       		do_omac(_auth_key, getPDUPointer(p), getPDULength(p), mac);
-
-       		if (memcmp(&mac2check, &mac, AUTH_LEN) != 0) {
-       			printf("error\n\r");
-       		}
-
-       		memset(mac2check, 0, AUTH_LEN);
-       }
-
-  } 
-
+ else{
+    if(eapKeyAvailable){
+        
+  	//printf("SEQUENCE = ");      
+  	//printf_hex(sequence, SEQ_LEN);      
+        do_omac(msk_key, sequence, SEQ_LEN, auth_key);
+        authKeyAvailable = TRUE;
+  	//printf("MSK AVAILABLE = ");      
+  	//printf_hex(msk_key, 16);      
+  	//printf("AUTH KEY = ");      
+  	//printf_hex(auth_key, 16);      
+        // Verify the AUTH Option
+        
+        // Copy the mac
+        memcpy(&mac2check,getPDUPointer(p)+getPDULength(p)-16-5,16);
+  	//printf("MAC2CHECK =");      
+  	//printf_hex(mac2check, 16);      
+        // Zeroing the mac in meesage
+        memcpy(getPDUPointer(p)+getPDULength(p)-16-5,&mac,16);
+        // Setting the MAC
+        do_omac(auth_key, getPDUPointer(p),getPDULength(p), mac);
+	//printf("MAC =");
+  	//printf_hex(mac, 16);      
+        
+        if(memcmp(&mac2check, &mac,16) != 0)
+        {
+            printf("error\n\r");
+        }
+        
+        memset(mac2check,0,16);
+        
+        
+    }
+    
   eapReq = TRUE;
   eap_peer_sm_step (getPayloadPointer(p));
-  
+ } 
   // Building Response
   reset(coap_response);
   setVersion(coap_response,1);
   setType(coap_response,COAP_ACKNOWLEDGEMENT);
-  setCode(coap_response,COAP_CHANGED);
+  setCode(coap_response,responsecode);
   int token=1;
-  setToken(coap_response,(uint8_t*)&token,0);
+  setToken(coap_response, getTokenPointer(p), (uint8_t)getTokenLength(p));
   setMessageID(coap_response, getMessageID(p));
- 
-
   if (!lstate) {
   	lstate++;
- 	_setURI(coap_response, & URI[0], 4);
+	_setURI(coap_response,&URI[0],7);
+        setPayload(coap_response, (uint8_t *)&nonce_s, getPayloadLength(p));
   }
 
   if (!authKeyAvailable) {
@@ -144,7 +173,7 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   } else {
     	printf("adding the Authkey!!\n\r");
     	addOption(coap_response, COAP_OPTION_AUTH, AUTH_LEN, (uint8_t*)&mac2check);
-    	do_omac(_auth_key, getPDUPointer(coap_response),
+    	do_omac(auth_key, getPDUPointer(coap_response),
     	getPDULength(coap_response), mac2check);
     	memcpy(getPDUPointer(coap_response)+getPDULength(coap_response)-16, &mac2check, 16);
   }
@@ -154,9 +183,14 @@ static void eventhandler(process_event_t ev, process_data_t data) {
 
   // send the coap msgs with the SIGNALIZATION BIT set.
   printf("WE ARE SENDING RESPONSE TO COAP POST\n\r");
-  printf("\n\rtick after building eap_response %u\n\r", clock_time());
+  //printf("\n\rtick after building eap_response %u\n\r", clock_time());
   layer802154_send(getPDUPointer(coap_response), tx_buffer_index, GATEWAY_ADDR, SIGNALISATION_ON, DST_SHORT_FLAG);
-  printf("\n\rtick after send eap_responder %u\n\r", clock_time());
+  if (authKeyAvailable) {
+	bt_end_time = clock_time();
+	tot_time = bt_end_time - bt_begin_time;
+  	printf("\n\rclock at the end of bootstrapping %u\n\r", clock_time());
+  	printf("\n\rclock total bootstrapping time %u - %u = %u\n\r",bt_end_time, bt_begin_time, tot_time);
+  }
   eap_responder_timer_init();
 
 }
@@ -168,6 +202,7 @@ static void timeout_handler() {
   is_associated = 0;
   
   lstate = 0;
+  memset(&msk_key,0, MSK_LENGTH);
   memset(&auth_key, 0, AUTH_LEN);
   memset(&sequence, 0, SEQ_LEN);
   authKeyAvailable = 0;
@@ -195,7 +230,7 @@ PROCESS_THREAD(eap_responder_process, ev, data)
       }
       if(authenticated) {
 	printf("\n\rEAP PROCESS EXITED\n\r");
-        printf("+++ clock at end of bootstrapping %u\n", clock_time());
+        printf("clock at end of bootstrapping %u\n", clock_time());
 	//PROCESS_EXIT();
 	etimer_stop(&et);
       }

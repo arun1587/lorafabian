@@ -61,6 +61,7 @@ char coap_payload_beacon[150];
 int is_associated = 0;
 static int is_beacon_receive = 0;
 uint32_t nonce_c, nonce_s;
+unsigned long bt_begin_time, bt_end_time;
 
 u8 received[170];
 
@@ -134,17 +135,20 @@ coap_beacon_send_response() {
   setToken(coap_request,(uint8_t*)&token,0);
   setMessageID(coap_request,htons(0x0000));
 
-  int noresponseValue = 0x7f;
-  _setURI(coap_request,"/b",2);
 
-  nonce_s = rand();
-  printf("nonce_s added = %02x\n\r",nonce_s);
-  addOption(coap_request,COAP_OPTION_NONCE,4,&nonce_s);
-  addOption(coap_request,COAP_OPTION_NO_RESPONSE,1,&noresponseValue);
+
+  //int noresponseValue = 0x7f;
+  //_setURI(coap_request,"/b",2);
+  _setURI(coap_request,"/boot",5);
+
+  //nonce_s = rand();
+  //printf("nonce_s added = %02x\n\r",nonce_s);
+  //addOption(coap_request,COAP_OPTION_NONCE,4,&nonce_s);
+  //addOption(coap_request,COAP_OPTION_NO_RESPONSE,1,&noresponseValue);
 
 
   //CoAP message Response we set the payload
-  setPayload(coap_request, (uint8_t *)coap_payload_beacon, strlen(coap_payload_beacon));
+  //setPayload(coap_request, (uint8_t *)coap_payload_beacon, strlen(coap_payload_beacon));
 
   coap_packet_size = getPDULength(coap_request); 
   int tx_buffer_index = coap_packet_size;
@@ -258,13 +262,14 @@ PROCESS_THREAD(lorafab_bcn_process, ev, data) {
           bool my_mac = is_my_mac(&frame);
           if(br_msg) {
             printf("Broadcast message");
-	    printf("\n\r+++ clock at beginning of bootstrapping %u\n", clock_time());
+	    printf("\n\rclock at beginning of bootstrapping %u\n", clock_time());
+	    bt_begin_time = clock_time();
             if(!is_signaling(&frame) || debug_on_arduino)
               set_arduino_read_buf(frame.packet, packetSize);
           }
           else if(my_mac) {
             printf("Message is for me");
-	    printf("\n\r+++ clock at beginning of eap%u\n", clock_time());
+	    printf("\n\rclock at beginning of eap %u\n", clock_time());
             set_arduino_read_buf(frame.payload, frame.payload_len);
            }
           else {
