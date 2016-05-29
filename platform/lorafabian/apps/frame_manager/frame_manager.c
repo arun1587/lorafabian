@@ -132,7 +132,7 @@ coap_beacon_send_response() {
   setType(coap_request,COAP_CONFIRMABLE);
   setCode(coap_request,COAP_POST);
   int token=1;
-  setToken(coap_request,(uint8_t*)&token,0);
+  setToken(coap_request,(uint8_t*)&token,4);
   setMessageID(coap_request,htons(0x0000));
 
 

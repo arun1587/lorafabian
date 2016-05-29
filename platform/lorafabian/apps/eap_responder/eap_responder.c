@@ -191,6 +191,7 @@ static void eventhandler(process_event_t ev, process_data_t data) {
   	printf("\n\rclock at the end of bootstrapping %u\n\r", clock_time());
   	printf("\n\rclock total bootstrapping time %u - %u = %u\n\r",bt_end_time, bt_begin_time, tot_time);
   }
+  printf("\n\rclock after sending eap_response %u\n\r", clock_time());
   eap_responder_timer_init();
 
 }
